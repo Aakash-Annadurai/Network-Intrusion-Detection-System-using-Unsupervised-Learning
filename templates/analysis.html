@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Analytics — NIDS v2{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+    <!-- Metrics Grid -->
+    <div class="grid-4" id="metrics-grid" style="margin-bottom:20px">
+        <div class="card"><div class="card-title">Accuracy</div><div class="card-value" style="color:var(--accent)" id="m-accuracy">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-accuracy" style="width:0%;background:var(--accent)"></div></div></div>
+        <div class="card"><div class="card-title">Balanced Accuracy</div><div class="card-value" style="color:var(--blue-lt)" id="m-bal-acc">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-bal-acc" style="width:0%;background:var(--blue-lt)"></div></div></div>
+        <div class="card"><div class="card-title">Precision</div><div class="card-value" style="color:var(--green)" id="m-precision">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-precision" style="width:0%;background:var(--green)"></div></div></div>
+        <div class="card"><div class="card-title">Recall</div><div class="card-value" style="color:var(--amber)" id="m-recall">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-recall" style="width:0%;background:var(--amber)"></div></div></div>
+        <div class="card"><div class="card-title">F1 Score</div><div class="card-value" style="color:var(--green)" id="m-f1">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-f1" style="width:0%;background:var(--green)"></div></div></div>
+        <div class="card"><div class="card-title">AUC-ROC</div><div class="card-value" style="color:var(--accent)" id="m-auc">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-auc" style="width:0%;background:var(--accent)"></div></div></div>
+        <div class="card"><div class="card-title">Avg Precision</div><div class="card-value" style="color:var(--purple)" id="m-ap">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-ap" style="width:0%;background:var(--purple)"></div></div></div>
+        <div class="card"><div class="card-title">Specificity</div><div class="card-value" style="color:var(--blue-lt)" id="m-spec">—</div><div class="progress-wrap" style="margin-top:6px"><div id="pb-spec" style="width:0%;background:var(--blue-lt)"></div></div></div>
+    </div>
+
+    <!-- Error Rates + Confusion Counts -->
+    <div class="grid-2" style="margin-bottom:20px">
+        <div class="card">
+            <div class="card-title">Error Rates</div>
+            <table class="data-table" style="margin-top:8px">
+                <tr><td>False Positive Rate</td><td class="mono" id="m-fpr">—</td></tr>
+                <tr><td>False Negative Rate</td><td class="mono" id="m-fnr">—</td></tr>
+            </table>
+        </div>
+        <div class="card">
+            <div class="card-title">Confusion Counts</div>
+            <table class="data-table" style="margin-top:8px">
+                <tr><td style="color:var(--green)">True Positives</td><td class="mono" id="m-tp">—</td></tr>
+                <tr><td style="color:var(--red)">False Positives</td><td class="mono" id="m-fp">—</td></tr>
+                <tr><td style="color:var(--green)">True Negatives</td><td class="mono" id="m-tn">—</td></tr>
+                <tr><td style="color:var(--red)">False Negatives</td><td class="mono" id="m-fn">—</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Drift warning -->
+    <div class="warning-banner" id="drift-warning" style="display:none">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Distribution drift detected — consider retraining the models.</span>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-box full-w" style="margin-bottom:16px"><div class="chart-placeholder" id="vae-ph">VAE Training Curves</div><img id="vae-img" style="display:none"></div>
+    <div class="chart-box full-w" style="margin-bottom:16px;min-height:320px"><div class="chart-placeholder" id="umap-ph">UMAP Embedding</div><img id="umap-img" style="display:none"></div>
+    <div class="grid-2" style="margin-bottom:16px">
+        <div class="chart-box"><div class="chart-placeholder" id="shap-ph">Global SHAP</div><img id="shap-img" style="display:none"></div>
+        <div class="chart-box"><div class="chart-placeholder" id="cat-ph">Category Detection</div><img id="cat-img" style="display:none"></div>
+    </div>
+    <div class="grid-2" style="margin-bottom:16px">
+        <div class="chart-box"><div class="chart-placeholder" id="scores-ph">Score Distribution</div><img id="scores-img" style="display:none"></div>
+        <div class="chart-box"><div class="chart-placeholder" id="conf-ph">Confusion Matrix</div><img id="conf-img" style="display:none"></div>
+    </div>
+    <div class="chart-box full-w" style="margin-bottom:16px"><div class="chart-placeholder" id="roc-ph">ROC & PR Curves</div><img id="roc-img" style="display:none"></div>
+    <div class="chart-box full-w" id="drift-section"><div class="chart-placeholder" id="drift-ph">ADWIN Drift Timeline</div><img id="drift-img" style="display:none"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch('/api/stats').then(r=>r.json()).then(d => {
+    if (!d.trained) return;
+    const m = d.metrics || {};
+    const sets = [
+        ['m-accuracy', 'pb-accuracy', m.accuracy],
+        ['m-bal-acc', 'pb-bal-acc', m.balanced_accuracy],
+        ['m-precision', 'pb-precision', m.precision],
+        ['m-recall', 'pb-recall', m.recall],
+        ['m-f1', 'pb-f1', m.f1],
+        ['m-auc', 'pb-auc', m.roc_auc],
+        ['m-ap', 'pb-ap', m.avg_prec],
+        ['m-spec', 'pb-spec', m.specificity],
+    ];
+    sets.forEach(([vId, pId, val]) => {
+        document.getElementById(vId).textContent = fmt(val);
+        document.getElementById(pId).style.width = (val*100)+'%';
+    });
+    document.getElementById('m-fpr').textContent = fmtPct(m.fpr);
+    document.getElementById('m-fnr').textContent = fmtPct(m.fnr);
+    document.getElementById('m-tp').textContent = m.tp?.toLocaleString() || '—';
+    document.getElementById('m-fp').textContent = m.fp?.toLocaleString() || '—';
+    document.getElementById('m-tn').textContent = m.tn?.toLocaleString() || '—';
+    document.getElementById('m-fn').textContent = m.fn?.toLocaleString() || '—';
+
+    if (d.drift_events > 0) document.getElementById('drift-warning').style.display = 'flex';
+
+    loadChart('/api/chart/vae_loss', 'vae-img', 'vae-ph');
+    loadChart('/api/chart/umap', 'umap-img', 'umap-ph');
+    loadChart('/api/chart/shap_global', 'shap-img', 'shap-ph');
+    loadChart('/api/chart/category', 'cat-img', 'cat-ph');
+    loadChart('/api/chart/scores', 'scores-img', 'scores-ph');
+    loadChart('/api/chart/confusion', 'conf-img', 'conf-ph');
+    loadChart('/api/chart/roc', 'roc-img', 'roc-ph');
+    loadChart('/api/chart/drift', 'drift-img', 'drift-ph');
+});
+</script>
+{% endblock %}

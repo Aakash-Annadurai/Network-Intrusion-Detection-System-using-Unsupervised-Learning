@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Models — NIDS v2{% endblock %}
+{% block page_title %}Model Comparison{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+    <!-- Comparison Chart -->
+    <div class="chart-box full-w" style="margin-bottom:20px"><div class="chart-placeholder" id="comp-ph">Model Comparison</div><img id="comp-img" style="display:none"></div>
+
+    <!-- Ensemble Weights -->
+    <div class="grid-2" style="margin-bottom:20px">
+        <div class="chart-box"><div class="chart-placeholder" id="weights-ph">Ensemble Weights</div><img id="weights-img" style="display:none"></div>
+        <div>
+            <div class="card-title" style="margin-bottom:12px">Learned Model Weights</div>
+            <div class="grid-2" id="weight-cards"></div>
+        </div>
+    </div>
+
+    <!-- Per-Model Cards -->
+    <div class="grid-3" id="model-cards" style="margin-bottom:20px"></div>
+
+    <!-- Architecture Info -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">VAE Architecture</div>
+            <pre style="font-size:0.78rem;color:var(--txt2);margin-top:10px;line-height:1.6">
+Encoder:
+  Input(N) → Dense(128, ReLU)
+          → Dense(64, ReLU)
+          → [μ(12), log σ²(12)]
+
+Latent Sampling:
+  z = μ + ε · exp(0.5 · log σ²)
+
+Decoder:
+  z(12) → Dense(64, ReLU)
+        → Dense(128, ReLU)
+        → Output(N, Linear)
+
+Loss: ELBO = Recon(MSE) + β·KL
+Optimizer: Adam (lr=1e-3)
+Weight Init: He Initialization</pre>
+        </div>
+        <div class="card">
+            <div class="card-title">Stacked Ensemble Pipeline</div>
+            <pre style="font-size:0.78rem;color:var(--txt2);margin-top:10px;line-height:1.6">
+Meta-Features (4 columns):
+  ┌─────────────────────────┐
+  │ IF Score (normalized)   │
+  │ VAE ELBO (normalized)   │
+  │ HDBSCAN Noise Flag     │
+  │ RNN-DBSCAN Noise Flag  │
+  └─────────────────────────┘
+           ↓
+  LogisticRegression(
+    C=1.0,
+    class_weight='balanced',
+    max_iter=500
+  )
+           ↓
+  Anomaly Probability (0–1)
+           ↓
+  Threshold = percentile(
+    scores, 100×(1-contamination)
+  )</pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch('/api/stats').then(r=>r.json()).then(d => {
+    if (!d.trained) return;
+    loadChart('/api/chart/comparison', 'comp-img', 'comp-ph');
+    loadChart('/api/chart/weights', 'weights-img', 'weights-ph');
+});
+
+// Load weight cards and per-model metrics
+fetch('/api/stats').then(r=>r.json()).then(d => {
+    if (!d.trained) return;
+    const m = d.metrics || {};
+
+    // Weight cards — fetch from stats or comparison
+    const wcBox = document.getElementById('weight-cards');
+    const weightColors = {'Isolation Forest':'var(--amber)','VAE Score':'var(--accent)','HDBSCAN Noise':'var(--purple)','RNN-DBSCAN Noise':'var(--blue-lt)'};
+
+    // We approximate weights display from metrics
+    wcBox.innerHTML = Object.entries(weightColors).map(([name, color]) => `
+        <div class="card" style="text-align:center">
+            <div class="card-title" style="font-size:0.72rem">${name}</div>
+            <div class="card-value" style="color:${color};font-size:1.3rem">—</div>
+        </div>
+    `).join('');
+
+    // Per-model cards
+    const models = ['VAE', 'Isolation Forest', 'Ensemble'];
+    const modelColors = ['var(--accent)', 'var(--amber)', 'var(--green)'];
+    const mcBox = document.getElementById('model-cards');
+
+    mcBox.innerHTML = models.map((name, i) => `
+        <div class="card">
+            <div class="card-title" style="color:${modelColors[i]}">${name}</div>
+            <div style="margin-top:10px">
+                <div class="metric-row"><span>AUC-ROC</span><span class="mono">${fmt(m.roc_auc)}</span></div>
+                <div class="metric-row"><span>F1 Score</span><span class="mono">${fmt(m.f1)}</span></div>
+                <div class="metric-row"><span>Precision</span><span class="mono">${fmt(m.precision)}</span></div>
+                <div class="metric-row"><span>Recall</span><span class="mono">${fmt(m.recall)}</span></div>
+                <div class="metric-row"><span>Accuracy</span><span class="mono">${fmt(m.accuracy)}</span></div>
+            </div>
+        </div>
+    `).join('');
+});
+</script>
+<style>.metric-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(30,45,61,0.3); font-size: 0.85rem; } .metric-row span:first-child { color: var(--txt2); }</style>
+{% endblock %}

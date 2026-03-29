@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Live Stream — NIDS v2{% endblock %}
+{% block page_title %}Live Streaming{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+    <!-- Config -->
+    <div class="grid-2" style="margin-bottom:20px">
+        <div class="card">
+            <div class="card-title">Simulation Config</div>
+            <div style="margin-top:12px">
+                <div class="slider-group">
+                    <label>Batch Size <span id="bs-val">300</span></label>
+                    <input type="range" id="batch-size" min="50" max="1000" value="300" step="50" oninput="document.getElementById('bs-val').textContent=this.value">
+                </div>
+                <div class="slider-group">
+                    <label>Batches <span id="nb-val">5</span></label>
+                    <input type="range" id="n-batches" min="1" max="15" value="5" oninput="document.getElementById('nb-val').textContent=this.value">
+                </div>
+            </div>
+            <div class="card-title" style="margin-top:16px">Attack Mix</div>
+            <div style="margin-top:8px">
+                <div class="slider-group"><label>Normal % <span id="mix-normal-val">60</span></label><input type="range" id="mix-normal" min="0" max="100" value="60" oninput="document.getElementById('mix-normal-val').textContent=this.value"></div>
+                <div class="slider-group"><label>DoS % <span id="mix-dos-val">10</span></label><input type="range" id="mix-dos" min="0" max="50" value="10" oninput="document.getElementById('mix-dos-val').textContent=this.value"></div>
+                <div class="slider-group"><label>Exploits % <span id="mix-exp-val">15</span></label><input type="range" id="mix-exp" min="0" max="50" value="15" oninput="document.getElementById('mix-exp-val').textContent=this.value"></div>
+                <div class="slider-group"><label>Recon % <span id="mix-rec-val">15</span></label><input type="range" id="mix-rec" min="0" max="50" value="15" oninput="document.getElementById('mix-rec-val').textContent=this.value"></div>
+            </div>
+            <button class="btn btn-primary" id="stream-btn" onclick="runStream()" style="width:100%;margin-top:12px;justify-content:center">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
+                Start Simulation
+            </button>
+        </div>
+
+        <!-- Live Counters -->
+        <div>
+            <div class="grid-2" style="margin-bottom:16px">
+                <div class="card"><div class="card-title">Packets</div><div class="card-value" style="color:var(--accent)" id="cnt-packets">0</div></div>
+                <div class="card"><div class="card-title">Anomalies</div><div class="card-value" style="color:var(--red)" id="cnt-anomalies">0</div></div>
+                <div class="card"><div class="card-title">Alerts</div><div class="card-value" style="color:var(--amber)" id="cnt-alerts">0</div></div>
+                <div class="card"><div class="card-title">Batches</div><div class="card-value" style="color:var(--green)" id="cnt-batches">0</div></div>
+            </div>
+            <div class="card" id="drift-indicator">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <span class="status-dot on" id="drift-dot"></span>
+                    <span style="font-weight:600" id="drift-text">STABLE</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Timeline -->
+    <div class="card" style="margin-bottom:20px">
+        <div class="card-title">Batch Timeline</div>
+        <div id="batch-timeline" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Live Threat Feed -->
+    <div class="card">
+        <div class="card-title">Live Threat Feed</div>
+        <div id="threat-feed" style="margin-top:12px; max-height:400px; overflow-y:auto"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function runStream() {
+    const btn = document.getElementById('stream-btn');
+    btn.disabled = true; btn.textContent = 'Running...';
+
+    const batchSize = parseInt(document.getElementById('batch-size').value);
+    const nBatches = parseInt(document.getElementById('n-batches').value);
+    const norm = parseInt(document.getElementById('mix-normal').value);
+    const dos = parseInt(document.getElementById('mix-dos').value);
+    const exp = parseInt(document.getElementById('mix-exp').value);
+    const rec = parseInt(document.getElementById('mix-rec').value);
+    const total = norm + dos + exp + rec || 100;
+
+    const body = {
+        batch_size: batchSize, n_batches: nBatches,
+        attack_mix: { Normal: norm/total, DoS: dos/total, Exploits: exp/total, Reconnaissance: rec/total }
+    };
+
+    try {
+        const r = await fetch('/api/stream/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        const d = await r.json();
+        if (d.error) { alert(d.error); btn.disabled = false; btn.textContent = 'Start Simulation'; return; }
+
+        let totalPkts = 0, totalAnom = 0, totalAlerts = 0;
+        const timeline = document.getElementById('batch-timeline');
+        const feed = document.getElementById('threat-feed');
+        timeline.innerHTML = ''; feed.innerHTML = '';
+
+        for (const batch of d.batches) {
+            totalPkts += batch.packets;
+            totalAnom += batch.anomalies;
+            totalAlerts += batch.alert_list.length;
+
+            document.getElementById('cnt-packets').textContent = totalPkts.toLocaleString();
+            document.getElementById('cnt-anomalies').textContent = totalAnom.toLocaleString();
+            document.getElementById('cnt-alerts').textContent = totalAlerts;
+            document.getElementById('cnt-batches').textContent = batch.batch_id + 1;
+
+            if (batch.drift_detected) {
+                document.getElementById('drift-dot').className = 'status-dot off';
+                document.getElementById('drift-text').textContent = 'DRIFT DETECTED ⚠';
+                document.getElementById('drift-text').style.color = 'var(--amber)';
+            }
+
+            const anomRate = (batch.anomaly_rate * 100).toFixed(1);
+            const barColor = batch.anomaly_rate > 0.5 ? 'var(--red)' : batch.anomaly_rate > 0.2 ? 'var(--amber)' : 'var(--green)';
+            const sevBadges = Object.entries(batch.severity_counts).filter(([,v])=>v>0).map(([k,v])=>`<span class="badge badge-${k.toLowerCase()}">${k}: ${v}</span>`).join(' ');
+
+            timeline.innerHTML += `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;animation:fadeIn 0.3s">
+                    <span class="mono" style="width:80px;color:var(--txt2)">Batch ${batch.batch_id+1}</span>
+                    <div class="progress-wrap" style="flex:1;height:18px;border-radius:4px">
+                        <div style="width:${anomRate}%;background:${barColor};border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:0.72rem;color:#fff;min-width:40px">${anomRate}%</div>
+                    </div>
+                    <span style="font-size:0.78rem">${sevBadges}</span>
+                </div>
+            `;
+
+            for (const alert of batch.alert_list) {
+                feed.innerHTML = `
+                    <div class="alert-item" style="animation:fadeIn 0.3s">
+                        <div class="alert-head">
+                            <span class="badge badge-${alert.severity.toLowerCase()}">${alert.severity}</span>
+                            <span class="alert-score">${alert.anomaly_score.toFixed(4)}</span>
+                        </div>
+                        <div class="alert-meta">${alert.attack_cat} · ${alert.proto}/${alert.service} · ${alert.signature}</div>
+                    </div>
+                ` + feed.innerHTML;
+            }
+            await sleep(350);
+        }
+    } catch(e) {
+        alert('Error: ' + e);
+    }
+    btn.disabled = false; btn.textContent = 'Start Simulation';
+}
+</script>
+{% endblock %}

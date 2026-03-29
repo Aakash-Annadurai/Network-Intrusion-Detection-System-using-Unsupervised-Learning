@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — NIDS v2{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+    <!-- KPI Cards -->
+    <div class="grid-4" style="margin-bottom:20px">
+        <div class="card" id="kpi-alerts">
+            <div class="card-title">Total Alerts</div>
+            <div class="card-value" style="color:var(--red)" id="v-alerts">0</div>
+        </div>
+        <div class="card" id="kpi-auc">
+            <div class="card-title">AUC-ROC</div>
+            <div class="card-value" style="color:var(--accent)" id="v-auc">—</div>
+        </div>
+        <div class="card" id="kpi-f1">
+            <div class="card-title">F1 Score</div>
+            <div class="card-value" style="color:var(--green)" id="v-f1">—</div>
+        </div>
+        <div class="card" id="kpi-critical">
+            <div class="card-title">Critical Events</div>
+            <div class="card-value" style="color:var(--amber)" id="v-critical">0</div>
+        </div>
+    </div>
+
+    <div class="grid-3">
+        <!-- Severity Breakdown -->
+        <div class="card" id="severity-card">
+            <div class="card-title">Severity Breakdown</div>
+            <div id="severity-bars" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Mini Metrics -->
+        <div class="card">
+            <div class="card-title">Key Metrics</div>
+            <div style="margin-top:10px">
+                <div class="metric-row"><span>Accuracy</span><span class="mono" id="m-acc">—</span></div>
+                <div class="metric-row"><span>Precision</span><span class="mono" id="m-prec">—</span></div>
+                <div class="metric-row"><span>Recall</span><span class="mono" id="m-rec">—</span></div>
+                <div class="metric-row"><span>Specificity</span><span class="mono" id="m-spec">—</span></div>
+            </div>
+        </div>
+
+        <!-- Drift Status -->
+        <div class="card">
+            <div class="card-title">System Status</div>
+            <div style="margin-top:12px">
+                <div class="metric-row"><span>Drift Events</span><span class="mono" id="m-drift">0</span></div>
+                <div class="metric-row"><span>Dataset</span><span class="mono" id="m-ds">—</span></div>
+                <div class="metric-row"><span>Model Status</span><span class="mono" id="m-model">Not trained</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Alerts -->
+    <div class="card full-w" style="margin-top:20px">
+        <div class="card-title">Recent Alerts</div>
+        <div id="recent-alerts" style="margin-top:12px; max-height:420px; overflow-y:auto"></div>
+        <div id="no-alerts-msg" style="color:var(--txt-m); text-align:center; padding:30px; display:none">
+            No alerts yet. Train the model first.
+        </div>
+    </div>
+</div>
+
+<style>
+    .metric-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(30,45,61,0.3); font-size: 0.88rem; }
+    .metric-row span:first-child { color: var(--txt2); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadDashboard() {
+    fetch('/api/stats').then(r=>r.json()).then(d => {
+        document.getElementById('v-alerts').textContent = d.total_alerts || 0;
+        document.getElementById('v-auc').textContent = fmt(d.roc_auc);
+        document.getElementById('v-f1').textContent = fmt(d.f1);
+        document.getElementById('v-critical').textContent = (d.severity||{}).CRITICAL || 0;
+        document.getElementById('m-acc').textContent = fmtPct(d.accuracy);
+        document.getElementById('m-prec').textContent = fmtPct(d.precision);
+        document.getElementById('m-rec').textContent = fmtPct(d.recall);
+        document.getElementById('m-spec').textContent = fmtPct(d.specificity);
+        document.getElementById('m-drift').textContent = d.drift_events || 0;
+        document.getElementById('m-ds').textContent = d.dataset_name || '—';
+        document.getElementById('m-model').textContent = d.trained ? 'Trained ✓' : 'Not trained';
+
+        // Severity bars
+        const sevs = d.severity || {};
+        const sevBox = document.getElementById('severity-bars');
+        const total = Object.values(sevs).reduce((a,b)=>a+b, 0) || 1;
+        const sevColors = {CRITICAL:'var(--red)', HIGH:'var(--amber)', MEDIUM:'var(--blue-lt)', LOW:'var(--purple)', INFO:'var(--txt-m)'};
+        sevBox.innerHTML = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'].map(s => {
+            const cnt = sevs[s] || 0;
+            const pct = (cnt/total*100).toFixed(1);
+            return `<div style="margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:3px">
+                    <span class="badge badge-${s.toLowerCase()}">${s}</span><span class="mono">${cnt}</span>
+                </div>
+                <div class="progress-wrap"><div style="width:${pct}%;background:${sevColors[s]}"></div></div>
+            </div>`;
+        }).join('');
+
+        // Recent alerts
+        const alertsBox = document.getElementById('recent-alerts');
+        const noMsg = document.getElementById('no-alerts-msg');
+        const alerts = d.recent_alerts || [];
+        if (alerts.length === 0) {
+            noMsg.style.display = 'block'; alertsBox.style.display = 'none';
+        } else {
+            noMsg.style.display = 'none'; alertsBox.style.display = 'block';
+            alertsBox.innerHTML = alerts.map(a => `
+                <div class="alert-item">
+                    <div class="alert-head">
+                        <span class="badge badge-${a.severity.toLowerCase()}">${a.severity}</span>
+                        <span class="alert-score">${a.anomaly_score.toFixed(4)}</span>
+                    </div>
+                    <div class="alert-meta">
+                        ${a.attack_cat} · ${a.proto}/${a.service} · ${a.signature}
+                        ${a.shap_explanation && a.shap_explanation.length ? '<br>Flagged: '+a.shap_explanation.slice(0,3).map(s=>s.feature+' ('+s.contribution+'%)').join(' · ') : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+    }).catch(()=>{});
+}
+loadDashboard();
+setInterval(loadDashboard, 8000);
+</script>
+{% endblock %}

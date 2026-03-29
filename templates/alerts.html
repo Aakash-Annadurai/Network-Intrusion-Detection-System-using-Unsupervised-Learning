@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Alerts — NIDS v2{% endblock %}
+{% block page_title %}Alerts{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+    <!-- KPI Cards -->
+    <div class="grid-4" style="margin-bottom:20px">
+        <div class="card"><div class="card-title">Critical</div><div class="card-value" style="color:var(--red)" id="k-critical">0</div></div>
+        <div class="card"><div class="card-title">High</div><div class="card-value" style="color:var(--amber)" id="k-high">0</div></div>
+        <div class="card"><div class="card-title">Medium</div><div class="card-value" style="color:var(--blue-lt)" id="k-medium">0</div></div>
+        <div class="card"><div class="card-title">Low</div><div class="card-value" style="color:var(--purple)" id="k-low">0</div></div>
+    </div>
+
+    <!-- Alert Dashboard Chart -->
+    <div class="chart-box full-w" style="margin-bottom:20px"><div class="chart-placeholder" id="alert-chart-ph">Alert Dashboard</div><img id="alert-chart-img" style="display:none"></div>
+
+    <!-- Filters -->
+    <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <button class="btn btn-secondary active" onclick="filterSev('ALL',this)">ALL</button>
+            <button class="btn btn-secondary" onclick="filterSev('CRITICAL',this)">CRITICAL</button>
+            <button class="btn btn-secondary" onclick="filterSev('HIGH',this)">HIGH</button>
+            <button class="btn btn-secondary" onclick="filterSev('MEDIUM',this)">MEDIUM</button>
+            <button class="btn btn-secondary" onclick="filterSev('LOW',this)">LOW</button>
+            <button class="btn btn-secondary" onclick="filterSev('INFO',this)">INFO</button>
+            <select id="cat-filter" onchange="loadAlerts(1)" style="background:var(--bg-card);color:var(--txt);border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-family:inherit;font-size:0.85rem">
+                <option value="ALL">All Categories</option>
+                <option>DoS</option><option>Exploits</option><option>Fuzzers</option>
+                <option>Reconnaissance</option><option>Generic</option><option>Analysis</option>
+                <option>Backdoor</option><option>Shellcode</option><option>Worms</option><option>Normal</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <div style="overflow-x:auto">
+            <table class="data-table" id="alerts-table">
+                <thead><tr>
+                    <th>Severity</th><th>Timestamp</th><th>Protocol</th><th>Service</th>
+                    <th>Score</th><th>Signature</th><th>MITRE Tactic</th><th>Technique</th>
+                </tr></thead>
+                <tbody id="alerts-body"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button class="btn btn-secondary" id="prev-btn" onclick="loadAlerts(currentPage-1)">← Prev</button>
+            <span id="page-info" class="mono">Page 1 of 1</span>
+            <button class="btn btn-secondary" id="next-btn" onclick="loadAlerts(currentPage+1)">Next →</button>
+            <span class="mono" style="margin-left:12px" id="total-info"></span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1, currentSev = 'ALL';
+
+function filterSev(s, btn) {
+    currentSev = s;
+    document.querySelectorAll('.card .btn-secondary').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    loadAlerts(1);
+}
+
+function loadAlerts(page) {
+    if (page < 1) return;
+    currentPage = page;
+    const cat = document.getElementById('cat-filter').value;
+    fetch(`/api/alerts?page=${page}&per_page=20&severity=${currentSev}&category=${cat}`)
+        .then(r=>r.json()).then(d => {
+            document.getElementById('page-info').textContent = `Page ${d.page} of ${d.pages}`;
+            document.getElementById('total-info').textContent = `${d.total} alerts`;
+            document.getElementById('prev-btn').disabled = d.page <= 1;
+            document.getElementById('next-btn').disabled = d.page >= d.pages;
+
+            const tbody = document.getElementById('alerts-body');
+            tbody.innerHTML = d.alerts.map(a => `
+                <tr onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display==='none'?'table-row':'none'" style="cursor:pointer">
+                    <td><span class="badge badge-${a.severity.toLowerCase()}">${a.severity}</span></td>
+                    <td style="font-size:0.78rem">${a.timestamp}</td>
+                    <td>${a.proto}</td><td>${a.service}</td>
+                    <td class="mono">${a.anomaly_score.toFixed(4)}</td>
+                    <td style="font-size:0.78rem">${a.signature}</td>
+                    <td style="font-size:0.78rem">${a.mitre_att_ck?.tactic||''}</td>
+                    <td style="font-size:0.78rem">${a.mitre_att_ck?.technique||''}</td>
+                </tr>
+                <tr style="display:none">
+                    <td colspan="8" style="background:rgba(0,191,255,0.03)">
+                        <div class="shap-explanation">
+                            <div style="color:var(--txt2);margin-bottom:6px;font-weight:600">Flagged because:</div>
+                            ${(a.shap_explanation||[]).map(s => `
+                                <div class="shap-bar">
+                                    <span class="feat-name">${s.feature}</span>
+                                    <div class="progress-wrap"><div style="width:${s.contribution}%;background:var(--accent)"></div></div>
+                                    <span class="feat-pct">${s.contribution}%</span>
+                                </div>
+                            `).join('')}
+                            <div style="margin-top:8px;font-size:0.78rem;color:var(--txt-m)">
+                                Response: ${(a.response_actions||[]).join(' · ')}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        });
+}
+
+// Initial load
+fetch('/api/stats').then(r=>r.json()).then(d => {
+    const s = d.severity || {};
+    document.getElementById('k-critical').textContent = s.CRITICAL || 0;
+    document.getElementById('k-high').textContent = s.HIGH || 0;
+    document.getElementById('k-medium').textContent = s.MEDIUM || 0;
+    document.getElementById('k-low').textContent = s.LOW || 0;
+    if (d.trained) loadChart('/api/chart/alerts', 'alert-chart-img', 'alert-chart-ph');
+});
+loadAlerts(1);
+</script>
+{% endblock %}

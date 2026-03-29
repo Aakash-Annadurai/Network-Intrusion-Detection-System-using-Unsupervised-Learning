@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="NIDS v2 — AI-Powered Network Intrusion Detection System">
+    <title>{% block title %}NIDS v2{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ── Reset & Base ─────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #07090f; --bg-el: #0d1117; --bg-card: #111720;
+            --border: #1e2d3d; --border-lt: #263545;
+            --accent: #00bfff; --green: #00e676; --red: #ff4444;
+            --amber: #ffb300; --purple: #b388ff; --blue-lt: #64b5f6;
+            --txt: #e8edf2; --txt2: #7a8fa6; --txt-m: #3d5166;
+            --sidebar-w: 240px;
+        }
+        html { font-size: 14px; }
+        body {
+            font-family: 'Space Grotesk', sans-serif; background: var(--bg);
+            color: var(--txt); min-height: 100vh; overflow-x: hidden;
+        }
+        h1, h2, h3, h4, h5, code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* ── Scrollbar ────────────────────────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* ── Sidebar ──────────────────────────────────────────────────── */
+        .sidebar {
+            position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w);
+            background: var(--bg-el); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; z-index: 100;
+            transition: width 0.3s ease;
+        }
+        .sidebar-logo {
+            padding: 20px 18px; display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .sidebar-logo svg { width: 28px; height: 28px; flex-shrink: 0; }
+        .sidebar-logo span { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+        .sidebar-nav { flex: 1; padding: 12px 0; }
+        .nav-link {
+            display: flex; align-items: center; gap: 14px; padding: 11px 20px;
+            color: var(--txt2); text-decoration: none; font-size: 0.92rem;
+            font-weight: 500; transition: all 0.2s; border-left: 3px solid transparent;
+            position: relative;
+        }
+        .nav-link:hover { color: var(--txt); background: rgba(0,191,255,0.04); }
+        .nav-link.active {
+            color: var(--accent); background: rgba(0,191,255,0.08);
+            border-left-color: var(--accent);
+        }
+        .nav-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+        .sidebar-footer {
+            padding: 16px 20px; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--txt-m);
+        }
+        .sidebar-footer .status-dot {
+            display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px;
+        }
+        .status-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .status-dot.off { background: var(--red); }
+
+        /* ── Topbar ───────────────────────────────────────────────────── */
+        .topbar {
+            position: sticky; top: 0; z-index: 50; height: 56px;
+            margin-left: var(--sidebar-w); background: var(--bg-el);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 28px; backdrop-filter: blur(10px);
+        }
+        .topbar-title { font-size: 1.05rem; font-weight: 600; }
+        .topbar-right { display: flex; align-items: center; gap: 14px; }
+        .live-badge {
+            font-size: 0.72rem; font-weight: 700; padding: 3px 10px;
+            border-radius: 12px; background: rgba(0,230,118,0.15);
+            color: var(--green); text-transform: uppercase; letter-spacing: 1px;
+            animation: pulse-badge 2s infinite;
+        }
+        @keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .dataset-tag { font-size: 0.8rem; color: var(--txt2); }
+
+        /* ── Main Content ─────────────────────────────────────────────── */
+        .main { margin-left: var(--sidebar-w); padding: 28px; min-height: calc(100vh - 56px); }
+
+        /* ── Card ─────────────────────────────────────────────────────── */
+        .card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 20px; position: relative; overflow: hidden;
+            transition: border-color 0.3s;
+        }
+        .card:hover { border-color: var(--border-lt); }
+        .card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .card:hover::before { opacity: 1; }
+        .card-title { font-size: 0.82rem; color: var(--txt2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .card-value { font-size: 1.8rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+        /* ── Grid helpers ─────────────────────────────────────────────── */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .full-w { grid-column: 1 / -1; }
+
+        /* ── Badges ───────────────────────────────────────────────────── */
+        .badge {
+            display: inline-block; padding: 3px 10px; border-radius: 4px;
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-critical { background: rgba(255,68,68,0.18); color: #ff4444; }
+        .badge-high     { background: rgba(255,204,68,0.18); color: #ffcc44; }
+        .badge-medium   { background: rgba(130,180,248,0.18); color: #82b4f8; }
+        .badge-low      { background: rgba(196,160,255,0.18); color: #c4a0ff; }
+        .badge-info     { background: rgba(154,175,190,0.15); color: #9aafbe; }
+
+        /* ── Buttons ──────────────────────────────────────────────────── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 22px; border-radius: 6px; border: none;
+            font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+            font-size: 0.9rem; cursor: pointer; transition: all 0.25s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #0099cc);
+            color: #fff; box-shadow: 0 2px 12px rgba(0,191,255,0.25);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,191,255,0.35); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: var(--bg-card); color: var(--txt); border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-secondary.active { border-color: var(--accent); color: var(--accent); background: rgba(0,191,255,0.08); }
+
+        /* ── Progress bar ─────────────────────────────────────────────── */
+        .progress-wrap {
+            height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; flex: 1;
+        }
+        .progress-wrap > div {
+            height: 100%; border-radius: 3px; transition: width 0.4s ease;
+        }
+
+        /* ── Table ────────────────────────────────────────────────────── */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .data-table th {
+            text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+            color: var(--txt2); font-weight: 600; text-transform: uppercase; font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+        .data-table td {
+            padding: 10px 12px; border-bottom: 1px solid rgba(30,45,61,0.4);
+            vertical-align: middle;
+        }
+        .data-table tr:hover { background: rgba(0,191,255,0.03); }
+
+        /* ── Slider control ───────────────────────────────────────────── */
+        .slider-group { margin-bottom: 16px; }
+        .slider-group label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; color: var(--txt2); }
+        .slider-group label span { color: var(--accent); font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 4px;
+            background: var(--border); border-radius: 2px; outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px;
+            background: var(--accent); border-radius: 50%; cursor: pointer;
+            box-shadow: 0 0 8px rgba(0,191,255,0.4);
+        }
+
+        /* ── Chart container ──────────────────────────────────────────── */
+        .chart-box {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; overflow: hidden; position: relative;
+        }
+        .chart-box img { width: 100%; display: block; }
+        .chart-placeholder {
+            min-height: 200px; display: flex; align-items: center; justify-content: center;
+            color: var(--txt-m); font-size: 0.9rem;
+        }
+        .chart-placeholder.loading::after {
+            content: ''; width: 24px; height: 24px; border: 3px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin-left: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Alert item ───────────────────────────────────────────────── */
+        .alert-item {
+            padding: 12px 16px; border-radius: 6px; border: 1px solid var(--border);
+            margin-bottom: 8px; transition: all 0.2s; cursor: pointer;
+            background: var(--bg-card);
+        }
+        .alert-item:hover { border-color: var(--border-lt); transform: translateX(2px); }
+        .alert-item .alert-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .alert-item .alert-score { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
+        .alert-item .alert-meta { font-size: 0.78rem; color: var(--txt2); }
+
+        /* ── SHAP explanation ─────────────────────────────────────────── */
+        .shap-explanation { padding: 10px 0; font-size: 0.82rem; }
+        .shap-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        .shap-bar .feat-name { width: 140px; text-align: right; color: var(--txt2); font-size: 0.78rem; }
+        .shap-bar .feat-pct { width: 40px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--accent); }
+
+        /* ── Upload zone ──────────────────────────────────────────────── */
+        .upload-zone {
+            border: 2px dashed var(--border); border-radius: 8px; padding: 40px;
+            text-align: center; cursor: pointer; transition: all 0.3s;
+            color: var(--txt2);
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent); background: rgba(0,191,255,0.03);
+            color: var(--accent);
+        }
+        .upload-zone svg { width: 40px; height: 40px; margin-bottom: 12px; opacity: 0.5; }
+
+        /* ── Log terminal ─────────────────────────────────────────────── */
+        .log-terminal {
+            background: #0a0e14; border: 1px solid var(--border); border-radius: 6px;
+            padding: 14px; max-height: 400px; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; line-height: 1.7;
+        }
+        .log-terminal .log-line { white-space: pre-wrap; }
+        .log-line.success { color: var(--green); }
+        .log-line.error { color: var(--red); }
+        .log-line.info { color: var(--accent); }
+
+        /* ── Pagination ───────────────────────────────────────────────── */
+        .pagination {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin-top: 20px; font-size: 0.85rem;
+        }
+        .pagination button { padding: 6px 14px; }
+
+        /* ── Warning banner ───────────────────────────────────────────── */
+        .warning-banner {
+            background: rgba(255,179,0,0.08); border: 1px solid rgba(255,179,0,0.3);
+            border-radius: 6px; padding: 12px 18px; color: var(--amber);
+            display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+        }
+
+        /* ── Animations ───────────────────────────────────────────────── */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        .animate-in { animation: fadeIn 0.4s ease forwards; }
+
+        /* ── Responsive ───────────────────────────────────────────────── */
+        @media (max-width: 1000px) {
+            .sidebar { width: 64px; }
+            .sidebar .nav-link span, .sidebar-logo span, .sidebar-footer { display: none; }
+            .sidebar .nav-link { justify-content: center; padding: 14px; }
+            .topbar, .main { margin-left: 64px; }
+            .grid-4 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 640px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+            .main { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <span>NIDS v2</span>
+        </div>
+        <div class="sidebar-nav">
+            <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}" id="nav-dashboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="/train" class="nav-link {% if request.path == '/train' %}active{% endif %}" id="nav-train">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4c0 2-2 3-2 5h-4c0-2-2-3-2-5a4 4 0 0 1 4-4z"/><line x1="10" y1="17" x2="14" y2="17"/><line x1="10" y1="20" x2="14" y2="20"/></svg>
+                <span>Training</span>
+            </a>
+            <a href="/analysis" class="nav-link {% if request.path == '/analysis' %}active{% endif %}" id="nav-analysis">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span>Analytics</span>
+            </a>
+            <a href="/alerts" class="nav-link {% if request.path == '/alerts' %}active{% endif %}" id="nav-alerts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span>Alerts</span>
+            </a>
+            <a href="/streaming" class="nav-link {% if request.path == '/streaming' %}active{% endif %}" id="nav-streaming">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
+                <span>Streaming</span>
+            </a>
+            <a href="/models" class="nav-link {% if request.path == '/models' %}active{% endif %}" id="nav-models">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                <span>Models</span>
+            </a>
+        </div>
+        <div class="sidebar-footer">
+            <div><span class="status-dot" id="model-status-dot"></span> Models: <span id="model-status-text">Not trained</span></div>
+        </div>
+    </nav>
+
+    <!-- Topbar -->
+    <header class="topbar">
+        <div class="topbar-title">{% block page_title %}Dashboard{% endblock %}</div>
+        <div class="topbar-right">
+            <span class="dataset-tag" id="topbar-dataset"></span>
+            <span class="live-badge" id="topbar-live" style="display:none">LIVE</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        // ── Common utilities ─────────────────────────────────────────────
+        function loadChart(url, imgId, phId) {
+            const ph = document.getElementById(phId);
+            const img = document.getElementById(imgId);
+            if (ph) { ph.classList.add('loading'); ph.textContent = 'Loading chart...'; }
+            fetch(url)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.img && img) { img.src = 'data:image/png;base64,' + d.img; img.style.display = 'block'; }
+                    if (ph) ph.style.display = 'none';
+                })
+                .catch(() => { if (ph) { ph.classList.remove('loading'); ph.textContent = 'Chart unavailable'; } });
+        }
+        function fmt(n, d=3) { return n != null ? Number(n).toFixed(d) : '—'; }
+        function fmtPct(n) { return n != null ? (Number(n)*100).toFixed(1)+'%' : '—'; }
+        function sevClass(s) { return 'badge-' + s.toLowerCase(); }
+
+        // Update topbar & sidebar status
+        function updateGlobalStatus() {
+            fetch('/api/stats').then(r => r.json()).then(d => {
+                document.getElementById('topbar-dataset').textContent = d.dataset_name || '';
+                const live = document.getElementById('topbar-live');
+                const dot = document.getElementById('model-status-dot');
+                const txt = document.getElementById('model-status-text');
+                if (d.trained) {
+                    live.style.display = 'inline-block';
+                    dot.className = 'status-dot on';
+                    txt.textContent = 'Trained';
+                } else {
+                    live.style.display = 'none';
+                    dot.className = 'status-dot off';
+                    txt.textContent = 'Not trained';
+                }
+            }).catch(() => {});
+        }
+        updateGlobalStatus();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
