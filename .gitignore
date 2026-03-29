@@ -5,3 +5,5 @@ models/
 *.pkl
 .env
 .DS_Store
+*.csv
+*.tsv
