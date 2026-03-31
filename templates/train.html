@@ -33,8 +33,8 @@
                     <input type="range" id="contamination" min="5" max="50" value="35" oninput="document.getElementById('cont-val').textContent=this.value+'%'">
                 </div>
                 <div class="slider-group">
-                    <label>UMAP Epochs <span id="umap-val">150</span></label>
-                    <input type="range" id="umap-epochs" min="50" max="300" value="150" oninput="document.getElementById('umap-val').textContent=this.value">
+                    <label>UMAP Epochs <span id="umap-val">50</span></label>
+                    <input type="range" id="umap-epochs" min="20" max="200" value="50" oninput="document.getElementById('umap-val').textContent=this.value">
                 </div>
             </div>
             <button class="btn btn-primary" id="train-btn" onclick="startTraining()" disabled style="width:100%;margin-top:12px;justify-content:center">

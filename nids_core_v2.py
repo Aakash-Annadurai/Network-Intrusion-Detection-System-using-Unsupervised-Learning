@@ -436,7 +436,7 @@ def eval_metrics(y_true, y_pred, y_score):
 # ══════════════════════════════════════════════════════════════════════════════
 # 9. UMAP wrapper
 # ══════════════════════════════════════════════════════════════════════════════
-def compute_umap_embedding(X, n_epochs=150, max_samples=5000):
+def compute_umap_embedding(X, n_epochs=50, max_samples=3000):
     """Compute 2D embedding — UMAP if available, else t-SNE fallback."""
     if len(X) > max_samples:
         idx = np.random.choice(len(X), max_samples, replace=False)
@@ -447,7 +447,7 @@ def compute_umap_embedding(X, n_epochs=150, max_samples=5000):
 
     if HAS_UMAP:
         reducer = umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.1,
-                            n_epochs=n_epochs, random_state=42)
+                            n_epochs=n_epochs, random_state=42, low_memory=True)
         emb = reducer.fit_transform(X_sub)
     else:
         from sklearn.manifold import TSNE

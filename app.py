@@ -109,6 +109,7 @@ def _train_thread(csv_path, ae_epochs, contamination, umap_epochs):
         push(f'📊 Split: Train={len(X_train):,} | Cal={len(X_cal):,} | Test={len(X_test):,}')
 
         # ── VAE ──
+        t0 = time.time()
         push(f'🧠 Training VAE ({ae_epochs} epochs)...')
         vae = VariationalAutoencoder(X_train.shape[1], latent_dim=12, lr=1e-3, beta=1.0)
 
@@ -117,20 +118,22 @@ def _train_thread(csv_path, ae_epochs, contamination, umap_epochs):
                 push(f'   Epoch {ep+1}/{total}: ELBO={elbo:.4f} Recon={recon:.4f} KL={kl:.4f}')
 
         vae.fit(X_train, epochs=ae_epochs, batch_size=512, callback=vae_cb)
-        push('✅ VAE training complete')
+        push(f'✅ VAE training complete ({time.time()-t0:.1f}s)')
 
         X_latent_train = vae.encode(X_train)
         X_latent_cal = vae.encode(X_cal)
         X_latent_test = vae.encode(X_test)
 
         # ── UMAP ──
+        t0 = time.time()
         push(f'🗺️ Computing UMAP embedding ({umap_epochs} epochs)...')
-        umap_emb, umap_idx = compute_umap_embedding(X_latent_train, n_epochs=umap_epochs, max_samples=5000)
+        umap_emb, umap_idx = compute_umap_embedding(X_latent_train, n_epochs=umap_epochs, max_samples=3000)
         cats_train = attack_cat.values[train_idx] if attack_cat is not None else np.array(['Unknown']*len(train_idx))
         umap_cats = cats_train[umap_idx]
-        push(f'✅ UMAP complete — {len(umap_emb)} points embedded')
+        push(f'✅ UMAP complete — {len(umap_emb)} points ({time.time()-t0:.1f}s)')
 
         # ── HDBSCAN ──
+        t0 = time.time()
         push('🔬 Running HDBSCAN clustering...')
         hdb_sample = min(6000, len(X_latent_train))
         hdb_idx = np.random.choice(len(X_latent_train), hdb_sample, replace=False)
@@ -143,34 +146,37 @@ def _train_thread(csv_path, ae_epochs, contamination, umap_epochs):
         _, nn_idx = nn_hdb.kneighbors(X_latent_train)
         hdb_labels_full = hdb_labels_sub[nn_idx.ravel()]
         n_hdb_noise = (hdb_labels_full == -1).sum()
-        push(f'✅ HDBSCAN: {len(set(hdb_labels_full))-1} clusters, {n_hdb_noise:,} noise points')
+        push(f'✅ HDBSCAN: {len(set(hdb_labels_full))-1} clusters, {n_hdb_noise:,} noise ({time.time()-t0:.1f}s)')
 
         # ── RNN-DBSCAN ──
+        t0 = time.time()
         push('🔍 Running RNN-DBSCAN...')
         rnn = RNNDBSCAN(k=15, rnn_percentile=20, eps_scale=1.8, min_samples=5)
-        rnn_sub_size = min(6000, len(X_latent_train))
+        rnn_sub_size = min(4000, len(X_latent_train))
         rnn_sub_idx = np.random.choice(len(X_latent_train), rnn_sub_size, replace=False)
         rnn_labels_sub = rnn.fit_predict(X_latent_train[rnn_sub_idx])
         nn_rnn = NearestNeighbors(n_neighbors=1, n_jobs=-1).fit(X_latent_train[rnn_sub_idx])
         _, nn_rnn_idx = nn_rnn.kneighbors(X_latent_train)
         rnn_labels_full = rnn_labels_sub[nn_rnn_idx.ravel()]
         n_rnn_noise = (rnn_labels_full == -1).sum()
-        push(f'✅ RNN-DBSCAN: {n_rnn_noise:,} noise points')
+        push(f'✅ RNN-DBSCAN: {n_rnn_noise:,} noise ({time.time()-t0:.1f}s)')
 
         # ── Isolation Forest ──
+        t0 = time.time()
         push(f'🌲 Training Isolation Forest (contamination={contamination})...')
-        iso = IsolationForest(n_estimators=300, contamination=contamination,
+        iso = IsolationForest(n_estimators=150, contamination=contamination,
                               random_state=42, n_jobs=-1)
         iso.fit(X_train)
-        push('✅ Isolation Forest trained')
+        push(f'✅ Isolation Forest trained ({time.time()-t0:.1f}s)')
 
         # ── SHAP ──
+        t0 = time.time()
         push('📊 Computing SHAP attributions...')
-        shap_sample_size = min(1500, len(X_test))
+        shap_sample_size = min(500, len(X_test))
         shap_idx = np.random.choice(len(X_test), shap_sample_size, replace=False)
         shap_vals = compute_shap_values(iso, X_test[shap_idx], feature_names)
         shap_global = np.mean(shap_vals, axis=0)
-        push(f'✅ SHAP computed for {shap_sample_size} samples')
+        push(f'✅ SHAP computed for {shap_sample_size} samples ({time.time()-t0:.1f}s)')
 
         # ── Calibration scores ──
         push('🎯 Building stacked ensemble on calibration set...')
@@ -589,4 +595,5 @@ _try_load_models()
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)),
+            use_reloader=False)
